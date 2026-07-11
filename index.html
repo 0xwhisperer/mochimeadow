@@ -255,7 +255,8 @@
       <li>Collect all 12 &#x2728; sparkles on each island before the &#x23F1; timer runs out.</li>
       <li>Clear the island and the rim glows gold &#x2014; <b>hop off the edge</b> to dive to the next world!</li>
       <li>From world 3, some sparkles float high &#x2014; <b>jump</b> to reach them.</li>
-      <li>Cross 9 worlds; <b>world 10 is the Grumpapillar's Lair</b>. Chomp every segment of the
+      <li>Cross 9 worlds; <b>world 10 is the Grumpapillar's Lair</b> &#x2014; the boss prowls it alongside
+        a full pack of grumps and thorns, with sparkles as bonus points. Chomp every segment of the
         boss to win the game (an endless victory lap awaits after).</li>
     </ul>
     <h3>&#x1F579; Controls</h3>
@@ -665,11 +666,11 @@ function buildWorld(n) {
     island.add(t);
   }
 
-  /* sparkles (none in the boss lair \u2014 the objective is the Grumpapillar) */
+  /* sparkles (in the boss lair they're bonus points \u2014 the objective is the Grumpapillar) */
   const starMat = new THREE.MeshToonMaterial({ color: 0xffd66b, gradientMap: gradientTex, emissive: 0xaa7700, emissiveIntensity: 0.35 });
   /* from world 3 on, some sparkles float high \u2014 you must JUMP for them */
-  const highCount = (!isBoss && n >= 3) ? Math.min(2 + (n - 3), 5) : 0;
-  if (!isBoss) for (let i = 0; i < STAR_TOTAL; i++) {
+  const highCount = n >= 3 ? Math.min(2 + (n - 3), 5) : 0;
+  for (let i = 0; i < STAR_TOTAL; i++) {
     const m = new THREE.Mesh(starGeo, starMat.clone());
     const a = (i / STAR_TOTAL) * Math.PI * 2 + Math.random() * 0.5;
     const r = 4 + Math.random() * (ISLAND_R - 6);
@@ -686,8 +687,8 @@ function buildWorld(n) {
     stars.push({ m, blob, base: baseY, phase: Math.random() * Math.PI * 2, alive: true });
   }
 
-  /* grumps (moving hazards; the lair belongs to the boss alone) */
-  if (!isBoss) for (let i = 0; i < D.grumps; i++) {
+  /* grumps (moving hazards \u2014 the boss lair gets the full world-9 pack too) */
+  for (let i = 0; i < D.grumps; i++) {
     const g = makeGrump();
     const a = Math.random() * Math.PI * 2, r = 7 + Math.random() * (ISLAND_R - 9);
     g.position.set(Math.cos(a) * r, 1.1, Math.sin(a) * r);
@@ -707,7 +708,7 @@ function buildWorld(n) {
   /* the final boss */
   if (isBoss) buildBoss(6 + 2 * (n / 10 - 1));
   /* thorn bushes (static hazards) */
-  for (let i = 0; i < (isBoss ? 4 : D.bushes); i++) {
+  for (let i = 0; i < D.bushes; i++) {
     const b = makeBush();
     const a = Math.random() * Math.PI * 2, r = 5 + Math.random() * (ISLAND_R - 7);
     b.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
@@ -2138,12 +2139,13 @@ function animate() {
       s.m.visible = false;
       s.blob.visible = false;
       sparkleCount++;
-      starCountEl.textContent = sparkleCount;
+      /* in the boss lair the chip tracks segments, and only the boss opens the edge */
+      if (!isBossWorld(world)) starCountEl.textContent = sparkleCount;
       addScore(10);
       burstRing(new THREE.Vector3(s.m.position.x, 0.4, s.m.position.z));
       burstHearts(s.m.position, 4);
       sfxCollect(sparkleCount);
-      if (sparkleCount >= STAR_TOTAL) celebrate();
+      if (sparkleCount >= STAR_TOTAL && !isBossWorld(world)) celebrate();
     }
   }
 
