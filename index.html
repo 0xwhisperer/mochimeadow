@@ -1182,12 +1182,13 @@ const KONAMI_WASD = ['w','w','s','s','a','d','a','d','b','a'];
 let best = { score: 0, world: 1 };
 try { best = { ...best, ...JSON.parse(localStorage.getItem('mochiBest') || '{}') }; } catch {}
 /* the run itself is saved continuously, so a page reload never wipes progress */
+const GAME_VERSION = '20260711-051111'; /* stamped with a real build id at publish time */
 let savedRun = null;
 try { savedRun = JSON.parse(localStorage.getItem('mochiRun') || 'null'); } catch {}
 if (savedRun && !(savedRun.world >= 1 && (savedRun.world > 1 || savedRun.score > 0))) savedRun = null;
 function saveRun() {
   try {
-    localStorage.setItem('mochiRun', JSON.stringify({ world, score, lives, boopCount, heartEarned }));
+    localStorage.setItem('mochiRun', JSON.stringify({ world, score, lives, boopCount, heartEarned, v: GAME_VERSION }));
   } catch {}
 }
 function clearRun() {
@@ -1222,8 +1223,12 @@ if (best.score > 0) {
    starting over requires the explicit "start fresh" choice */
 if (savedRun) {
   const mp = document.getElementById('main-press');
-  mp.textContent =
-    `\ud83c\udd95 new version loaded! press ENTER to continue where you were \u2661 world ${savedRun.world} \u00b7 \u2b50 ${savedRun.score}`;
+  /* only claim "new version" when the build actually changed since the save */
+  const isNewVersion = savedRun.v !== GAME_VERSION;
+  mp.textContent = (isNewVersion
+    ? '\ud83c\udd95 new version loaded! press ENTER to continue where you were \u2661 '
+    : '\u25b6 welcome back! press ENTER to continue \u2661 ')
+    + `world ${savedRun.world} \u00b7 \u2b50 ${savedRun.score}`;
   mp.addEventListener('click', (e) => { e.stopPropagation(); continueRun(); });
   const cp = document.getElementById('continue-press');
   cp.textContent = '\ud83c\udf31 start fresh (N)';
