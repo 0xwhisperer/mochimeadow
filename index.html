@@ -178,7 +178,7 @@
     <h2>&#x23F0; oh no, the sparkles flew away!</h2>
     <p class="subtitle">the grumps got the better of this world&#x2026;</p>
     <p class="best-line" id="timeout-score"></p>
-    <div class="press">press any key to try this world again &#x2661;</div>
+    <div class="press">press ENTER (or click here) to try this world again &#x2661;</div>
   </div>
 </div>
 
@@ -197,7 +197,7 @@
     <h2 style="font-size:clamp(2rem,6vw,3rem);color:#c46a84;text-shadow:0 3px 0 #fff">&#x1F494; game over&#x2026;</h2>
     <p class="subtitle">the last heart faded &#x2014; the sparkles will wait for you</p>
     <p class="best-line" id="gameover-score"></p>
-    <div class="press">press any key to start over from world 1 &#x2661;</div>
+    <div class="press">press ENTER (or click here) to start over from world 1 &#x2661;</div>
   </div>
 </div>
 
@@ -207,7 +207,7 @@
       &#x1F451; YOU BEAT MOCHI MEADOW! &#x1F451;</h2>
     <p class="subtitle">the Grumpapillar hopped away in tears&#x2026; the meadows are safe!</p>
     <p class="best-line" id="victory-score"></p>
-    <div class="press">press any key for the endless victory lap &#x2661;</div>
+    <div class="press">press ENTER (or click here) for the endless victory lap &#x2661;</div>
   </div>
 </div>
 
@@ -1182,7 +1182,7 @@ const KONAMI_WASD = ['w','w','s','s','a','d','a','d','b','a'];
 let best = { score: 0, world: 1 };
 try { best = { ...best, ...JSON.parse(localStorage.getItem('mochiBest') || '{}') }; } catch {}
 /* the run itself is saved continuously, so a page reload never wipes progress */
-const GAME_VERSION = '20260711-051111'; /* stamped with a real build id at publish time */
+const GAME_VERSION = '20260711-051716'; /* stamped with a real build id at publish time */
 let savedRun = null;
 try { savedRun = JSON.parse(localStorage.getItem('mochiRun') || 'null'); } catch {}
 if (savedRun && !(savedRun.world >= 1 && (savedRun.world > 1 || savedRun.score > 0))) savedRun = null;
@@ -1277,6 +1277,7 @@ addEventListener('keydown', (e) => {
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
   if (loreOpen) { if (k === 'escape' || k === 'enter') closeLore(); return; }
   if ((k === 'escape' || k === 'p') && started && state === 'play') { pauseGame(); return; }
+  if (started && k === 'enter') { confirmOverlay(); return; }
   keys[k] = true;
   /* konami code (arrow or WASD spelling): the meadow remembers the old ways */
   konamiIdx = (k === KONAMI[konamiIdx]) ? konamiIdx + 1 : (k === KONAMI[0] ? 1 : 0);
@@ -1314,6 +1315,14 @@ addEventListener('pointerup', () => { touchOrigin = null; touchDir = null; });
 function anyInput() {
   if (loreOpen) return;
   if (!started) { if (!savedRun) startGame(); return; } /* with a saved run, only ENTER continues */
+  if (state === 'paused') resumeGame(); /* resuming is harmless \u2014 any key is fine */
+}
+/* end-of-round screens need a DELIBERATE confirm (ENTER / click / Start) so a
+   player mashing keys at the moment the round ends can't restart by accident */
+let overlayLockUntil = 0;
+function lockOverlay() { overlayLockUntil = performance.now() + 800; }
+function confirmOverlay() {
+  if (loreOpen || performance.now() < overlayLockUntil) return;
   if (state === 'timeout') retryWorld();
   else if (state === 'victory') victoryLap();
   else if (state === 'gameover') resetRun();
@@ -1444,9 +1453,9 @@ function continueRun() {
   setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 10000);
 }
 document.getElementById('title-card').addEventListener('click', anyInput);
-document.getElementById('timeout-card').addEventListener('click', anyInput);
-document.getElementById('victory-card').addEventListener('click', anyInput);
-document.getElementById('gameover-card').addEventListener('click', anyInput);
+document.getElementById('timeout-card').addEventListener('click', confirmOverlay);
+document.getElementById('victory-card').addEventListener('click', confirmOverlay);
+document.getElementById('gameover-card').addEventListener('click', confirmOverlay);
 document.getElementById('pause-card').addEventListener('click', anyInput);
 document.getElementById('pause-btn').addEventListener('click', (e) => { e.stopPropagation(); pauseGame(); });
 document.getElementById('quit-btn').addEventListener('click', (e) => { e.stopPropagation(); quitToTitle(); });
@@ -1640,7 +1649,7 @@ function pollPad() {
   const a = [0, 1, 2, 3].some(i => gp.buttons[i] && gp.buttons[i].pressed);
   const jump = a && !padPrevA;
   padPrevA = a;
-  if (jump && started && ['timeout', 'victory', 'gameover', 'paused'].includes(state)) anyInput();
+  if (jump && started && state === 'paused') resumeGame(); /* face buttons only resume a pause */
   /* L/R shoulders (4/5): rotate the camera, like Q/E \u2014 and the boss door at the title */
   const sh = (gp.buttons[4] && gp.buttons[4].pressed) || (gp.buttons[5] && gp.buttons[5].pressed);
   const rot = ((gp.buttons[4] && gp.buttons[4].pressed) ? 1 : 0) - ((gp.buttons[5] && gp.buttons[5].pressed) ? 1 : 0);
@@ -1658,7 +1667,8 @@ function pollPad() {
   const st = (std ? [9] : [6, 7, 9]).some(i => gp.buttons[i] && gp.buttons[i].pressed);
   if (st && !padPrevStart) {
     if (started && state === 'play') pauseGame();
-    else if (!started && savedRun) continueRun(); /* Start = deliberate continue */
+    else if (started) confirmOverlay(); /* Start = the deliberate confirm */
+    else if (savedRun) continueRun();
     else anyInput();
   }
   padPrevStart = st;
@@ -1764,6 +1774,7 @@ function bossDefeated() {
   rainbow.visible = true;
   rainbowLife = 12;
   state = 'victory';
+  lockOverlay();
   document.getElementById('victory-score').textContent = `\u2b50 score: ${score} \u00b7 \ud83c\udfc6 best: ${best.score}`;
   document.getElementById('victory-card').classList.remove('hidden');
 }
@@ -1783,6 +1794,7 @@ function timeOut() {
   livesEl.textContent = Math.max(0, lives);
   sfxTimeout();
   saveBest();
+  lockOverlay();
   if (lives > 0) saveRun(); else clearRun();
   if (lives <= 0) {
     state = 'gameover';
