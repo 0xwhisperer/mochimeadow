@@ -265,7 +265,8 @@
       <li><b>Jump:</b> SPACE (or &#x1F3AE; A) &#x2014; sail over grumps, thorns, and up to high sparkles</li>
       <li><b>Camera:</b> Q / E to circle the world 360&#xB0; &#xB7; mouse wheel to zoom out for an aerial view</li>
       <li><b>Pause:</b> ESC or P (or the &#x23F8; button) &#x2014; resume with any key, or quit to the title from there</li>
-      <li><b>&#x1F3AE; Controller:</b> left stick move &#xB7; right stick spin &amp; zoom &#xB7; A jump &#xB7; Start pause/begin</li>
+      <li><b>&#x1F3AE; Controller:</b> left stick or d-pad to move (retro USB pads like SNES work too) &#xB7;
+        any face button jumps &#xB7; right stick (modern pads) spins &amp; zooms &#xB7; Start pauses or begins</li>
     </ul>
     <h3>&#x1F49B; Friends &amp; foes</h3>
     <ul>
@@ -285,6 +286,9 @@
       <li>Every world gives you <b>77 seconds</b>. Sparkles +10 &#xB7; boops +2 points and +2 seconds &#xB7;
         leftover seconds become bonus points when you clear a world.</li>
       <li>Reached world 10 before? The title screen offers a door straight to the boss (press B).</li>
+      <li><b>Your run saves itself.</b> After a reload &#x2014; or when a new version of the game ships &#x2014;
+        the title screen asks if you want to continue where you were: press <b>ENTER</b> to pick
+        your run back up, or N to start fresh.</li>
     </ul>
     <h3>&#x1F30D; The ten worlds</h3>
     <p>1 Spring Meadow &#xB7; 2 Snowdrift Isle &#xB7; 3 Candy Cove &#xB7; 4 Twilight Grove &#xB7; 5 Seafoam Shore &#xB7;
@@ -1213,8 +1217,10 @@ if (best.score > 0) {
 /* a saved run survives reloads and republishes \u2014 continuing is the DEFAULT;
    starting over requires the explicit "start fresh" choice */
 if (savedRun) {
-  document.getElementById('main-press').textContent =
-    `\u25b6 press any key to continue \u2661 world ${savedRun.world} \u00b7 \u2b50 ${savedRun.score}`;
+  const mp = document.getElementById('main-press');
+  mp.textContent =
+    `\ud83c\udd95 new version loaded! press ENTER to continue where you were \u2661 world ${savedRun.world} \u00b7 \u2b50 ${savedRun.score}`;
+  mp.addEventListener('click', (e) => { e.stopPropagation(); continueRun(); });
   const cp = document.getElementById('continue-press');
   cp.textContent = '\ud83c\udf31 start fresh (N)';
   cp.style.display = 'inline-block';
@@ -1268,12 +1274,17 @@ addEventListener('keydown', (e) => {
   if (konamiIdx >= KONAMI.length) { konamiIdx = 0; konamiBlessing(); }
   konamiIdx2 = (k === KONAMI_WASD[konamiIdx2]) ? konamiIdx2 + 1 : (k === KONAMI_WASD[0] ? 1 : 0);
   if (konamiIdx2 >= KONAMI_WASD.length) { konamiIdx2 = 0; konamiBlessing(); }
-  /* boss shortcut from the title, once earned */
-  if (!started && k === 'b' && best.world >= 10) return startGame(true);
-  /* resume a saved run from the title */
-  if (!started && k === 'c' && savedRun) return continueRun();
-  /* explicitly start fresh, abandoning the saved run */
-  if (!started && k === 'n' && savedRun) { clearRun(); return startGame(); }
+  if (!started) {
+    if (k === 'b' && best.world >= 10) { clearRun(); return startGame(true); }
+    if (savedRun) {
+      /* a saved run waits \u2014 continuing must be a deliberate ENTER so the
+         new-version reload never confuses anyone */
+      if (k === 'enter' || k === 'c') return continueRun();
+      if (k === 'n') { clearRun(); return startGame(); }
+      return;
+    }
+    return startGame();
+  }
   anyInput();
 });
 addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
@@ -1293,7 +1304,7 @@ addEventListener('pointerup', () => { touchOrigin = null; touchDir = null; });
 
 function anyInput() {
   if (loreOpen) return;
-  if (!started) return savedRun ? continueRun() : startGame(); /* resuming is the safe default */
+  if (!started) { if (!savedRun) startGame(); return; } /* with a saved run, only ENTER continues */
   if (state === 'timeout') retryWorld();
   else if (state === 'victory') victoryLap();
   else if (state === 'gameover') resetRun();
@@ -1529,7 +1540,10 @@ document.getElementById('lore-btn').addEventListener('click', (e) => { e.stopPro
 document.getElementById('lore-close').addEventListener('click', (e) => { e.stopPropagation(); closeLore(); });
 document.getElementById('lore-card').addEventListener('click', (e) => { if (e.target.id === 'lore-card') closeLore(); });
 
-addEventListener('gamepadconnected', () => showToast('\ud83c\udfae controller connected!', 2500));
+addEventListener('gamepadconnected', (e) => {
+  const name = (e.gamepad && e.gamepad.id ? e.gamepad.id : 'controller').slice(0, 36);
+  showToast(`\ud83c\udfae ${name} connected!`, 3000);
+});
 
 /* ---------- camera zoom (wheel) ---------- */
 addEventListener('wheel', (e) => {
@@ -1554,24 +1568,37 @@ function pollPad() {
     return PAD_IDLE;
   }
   if (!gp) return PAD_IDLE;
-  let x = Math.abs(gp.axes[0] || 0) > 0.25 ? gp.axes[0] : 0;
-  let z = Math.abs(gp.axes[1] || 0) > 0.25 ? gp.axes[1] : 0;
+  const std = gp.mapping === 'standard';
+  let x = Math.abs(gp.axes[0] || 0) > 0.35 ? gp.axes[0] : 0;
+  let z = Math.abs(gp.axes[1] || 0) > 0.35 ? gp.axes[1] : 0;
+  /* d-pad as buttons (standard mapping) */
   if (gp.buttons[14] && gp.buttons[14].pressed) x = -1;
   if (gp.buttons[15] && gp.buttons[15].pressed) x = 1;
   if (gp.buttons[12] && gp.buttons[12].pressed) z = -1;
   if (gp.buttons[13] && gp.buttons[13].pressed) z = 1;
-  const rx = Math.abs(gp.axes[2] || 0) > 0.25 ? gp.axes[2] : 0;
-  const ry = Math.abs(gp.axes[3] || 0) > 0.25 ? gp.axes[3] : 0;
-  const a = !!(gp.buttons[0] && gp.buttons[0].pressed);
+  /* d-pad as a HID hat switch \u2014 where SNES/retro USB adapters usually put it */
+  if (gp.axes.length >= 10 && typeof gp.axes[9] === 'number' && Math.abs(gp.axes[9]) <= 1.01) {
+    const idx = ((Math.round((gp.axes[9] + 1) * 3.5) % 8) + 8) % 8; /* 0=up \u2026 7=up-left */
+    const hx = [0, 1, 1, 1, 0, -1, -1, -1][idx];
+    const hz = [-1, -1, 0, 1, 1, 1, 0, -1][idx];
+    if (hx || hz) { x = hx; z = hz; }
+  }
+  /* camera stick only on standard-mapped pads \u2014 retro pads reuse these axes for other things */
+  const rx = (std && Math.abs(gp.axes[2] || 0) > 0.25) ? gp.axes[2] : 0;
+  const ry = (std && Math.abs(gp.axes[3] || 0) > 0.25) ? gp.axes[3] : 0;
+  /* any face button jumps \u2014 retro pads shuffle A/B/X/Y indices */
+  const a = [0, 1, 2, 3].some(i => gp.buttons[i] && gp.buttons[i].pressed);
   const jump = a && !padPrevA;
   padPrevA = a;
-  const st = !!(gp.buttons[9] && gp.buttons[9].pressed);
+  /* start on 9, select on 8 \u2014 accept either */
+  const st = [8, 9].some(i => gp.buttons[i] && gp.buttons[i].pressed);
   if (st && !padPrevStart) {
     if (started && state === 'play') pauseGame();
+    else if (!started && savedRun) continueRun(); /* Start = deliberate continue */
     else anyInput();
   }
   padPrevStart = st;
-  if ((x || z || jump) && !started) (savedRun ? continueRun() : startGame());
+  if ((x || z || jump) && !started && !savedRun) startGame();
   return { x, z, jump, rx, ry };
 }
 document.getElementById('sound-btn').addEventListener('click', (e) => {
