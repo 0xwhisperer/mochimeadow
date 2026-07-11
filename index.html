@@ -221,7 +221,7 @@
     <div class="press" id="continue-press" style="display:none;background:#8fd8a8;box-shadow:0 6px 0 #5fae78"></div>
     <div id="controls-line">&#x1F579; WASD / arrows to hop &#xB7; SPACE to jump &#xB7; Q / E to spin the camera &#xB7;
       scroll to zoom &#xB7; ESC to pause &#xB7; &#x1F3AE; gamepads welcome</div>
-    <div class="press">press any key to begin &#x2661;</div>
+    <div class="press" id="main-press">press any key to begin &#x2661;</div>
     <div class="press" id="lore-open-title">&#x1F4D6; story &amp; guide</div>
     <div class="press" id="boss-press" style="display:none;background:#b08ad0;box-shadow:0 6px 0 #8a6aa8;margin-left:.8rem">
       &#x1F41B; straight to the Grumpapillar (B)</div>
@@ -1209,12 +1209,15 @@ if (best.score > 0) {
   document.getElementById('title-best').textContent =
     `\ud83c\udfc6 best: ${best.score} sparkle points \u00b7 reached world ${best.world}`;
 }
-/* offer to continue a saved run (survives reloads and republishes) */
+/* a saved run survives reloads and republishes \u2014 continuing is the DEFAULT;
+   starting over requires the explicit "start fresh" choice */
 if (savedRun) {
+  document.getElementById('main-press').textContent =
+    `\u25b6 press any key to continue \u2661 world ${savedRun.world} \u00b7 \u2b50 ${savedRun.score}`;
   const cp = document.getElementById('continue-press');
-  cp.textContent = `\u25b6 continue \u00b7 world ${savedRun.world} \u00b7 \u2b50 ${savedRun.score} (C)`;
+  cp.textContent = '\ud83c\udf31 start fresh (N)';
   cp.style.display = 'inline-block';
-  cp.addEventListener('click', (e) => { e.stopPropagation(); continueRun(); });
+  cp.addEventListener('click', (e) => { e.stopPropagation(); clearRun(); startGame(); });
 }
 /* the boss door opens once you've earned it (reached world 10) */
 if (best.world >= 10) {
@@ -1268,6 +1271,8 @@ addEventListener('keydown', (e) => {
   if (!started && k === 'b' && best.world >= 10) return startGame(true);
   /* resume a saved run from the title */
   if (!started && k === 'c' && savedRun) return continueRun();
+  /* explicitly start fresh, abandoning the saved run */
+  if (!started && k === 'n' && savedRun) { clearRun(); return startGame(); }
   anyInput();
 });
 addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
@@ -1287,7 +1292,7 @@ addEventListener('pointerup', () => { touchOrigin = null; touchDir = null; });
 
 function anyInput() {
   if (loreOpen) return;
-  if (!started) return startGame();
+  if (!started) return savedRun ? continueRun() : startGame(); /* resuming is the safe default */
   if (state === 'timeout') retryWorld();
   else if (state === 'victory') victoryLap();
   else if (state === 'gameover') resetRun();
@@ -1565,7 +1570,7 @@ function pollPad() {
     else anyInput();
   }
   padPrevStart = st;
-  if ((x || z || jump) && !started) startGame();
+  if ((x || z || jump) && !started) (savedRun ? continueRun() : startGame());
   return { x, z, jump, rx, ry };
 }
 document.getElementById('sound-btn').addEventListener('click', (e) => {
