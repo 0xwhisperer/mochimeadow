@@ -280,8 +280,8 @@
     <ul>
       <li>You start with <b>3 hearts</b>. Running out of time costs one. Losing them all is game
         over &#x2014; back to world 1, score reset. Your &#x1F3C6; best is always remembered.</li>
-      <li><b>Every 1000 points earns you a bonus heart!</b> Sparkle chains, boops and sunberry
-        feasts all add up.</li>
+      <li><b>Reach 1500 points and the meadow gifts you one bonus heart</b> &#x2014; once per run, so
+        earn it well. Sparkle chains, boops and sunberry feasts all add up.</li>
       <li>Every world gives you <b>77 seconds</b>. Sparkles +10 &#xB7; boops +2 points and +2 seconds &#xB7;
         leftover seconds become bonus points when you clear a world.</li>
       <li>Reached world 10 before? The title screen offers a door straight to the boss (press B).</li>
@@ -1164,7 +1164,7 @@ let lives = 3;
 let playerVy = 0;                    // real jump velocity (space / gamepad A)
 let padPrevA = false, padPrevStart = false;
 let konamiIdx = 0, konamiIdx2 = 0, snailBoops = 0, snailSecretDone = false;
-let nextLifeAt = 1000;              // bonus heart every 1000 points
+let heartEarned = false;            // ONE bonus heart per run, at 1500 points
 let rainbowT = 0, heartTrailT = 0;  // RAINBOW MOCHI MODE (the old ways)
 let loreOpen = false;
 let camAngle = 0, camDist = 16;     // 360\u00b0 orbit + zoom (Q/E, wheel, right stick)
@@ -1179,7 +1179,7 @@ try { savedRun = JSON.parse(localStorage.getItem('mochiRun') || 'null'); } catch
 if (savedRun && !(savedRun.world >= 1 && (savedRun.world > 1 || savedRun.score > 0))) savedRun = null;
 function saveRun() {
   try {
-    localStorage.setItem('mochiRun', JSON.stringify({ world, score, lives, boopCount, nextLifeAt }));
+    localStorage.setItem('mochiRun', JSON.stringify({ world, score, lives, boopCount, heartEarned }));
   } catch {}
 }
 function clearRun() {
@@ -1231,15 +1231,15 @@ function addScore(n) {
   if (rainbowT > 0) n *= 2; /* rainbow mode doubles everything */
   score += n;
   scoreEl.textContent = score;
-  /* every 1000 points, the meadow gifts you a heart */
-  while (score >= nextLifeAt) {
-    nextLifeAt += 1000;
+  /* at 1500 points, the meadow gifts you a single bonus heart (once per run) */
+  if (!heartEarned && score >= 1500) {
+    heartEarned = true;
     if (lives < 9) {
       lives++;
       livesEl.textContent = lives;
       burstHearts(player.position.clone().add(new THREE.Vector3(0, 1.5, 0)), 8);
       sfxFanfare();
-      showToast(`\u2764\ufe0f BONUS HEART! next one at ${nextLifeAt} points`, 2800);
+      showToast('\u2764\ufe0f BONUS HEART! the meadow\u2019s gift for 1500 points', 2800);
     }
   }
   saveBest();
@@ -1319,7 +1319,7 @@ function quitToTitle() {
   livesEl.textContent = lives;
   score = 0;
   scoreEl.textContent = 0;
-  nextLifeAt = 1000;
+  heartEarned = false;
   boopCount = 0;
   boopCountEl.textContent = 0;
   rainbowT = 0;
@@ -1362,7 +1362,7 @@ function resetRun() {
   livesEl.textContent = lives;
   score = 0;
   scoreEl.textContent = 0;
-  nextLifeAt = 1000;
+  heartEarned = false;
   boopCount = 0;
   boopCountEl.textContent = 0;
   rainbowT = 0;
@@ -1409,7 +1409,7 @@ function continueRun() {
   lives = savedRun.lives ?? 3;
   score = savedRun.score ?? 0;
   boopCount = savedRun.boopCount ?? 0;
-  nextLifeAt = savedRun.nextLifeAt ?? 1000;
+  heartEarned = savedRun.heartEarned ?? (score >= 1500);
   world = savedRun.world ?? 1;
   livesEl.textContent = lives;
   scoreEl.textContent = score;
