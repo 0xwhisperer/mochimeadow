@@ -266,7 +266,9 @@
       <li><b>Camera:</b> Q / E to circle the world 360&#xB0; &#xB7; mouse wheel to zoom out for an aerial view</li>
       <li><b>Pause:</b> ESC or P (or the &#x23F8; button) &#x2014; resume with any key, or quit to the title from there</li>
       <li><b>&#x1F3AE; Controller:</b> left stick or d-pad to move (retro USB pads like SNES work too) &#xB7;
-        any face button jumps &#xB7; right stick (modern pads) spins &amp; zooms &#xB7; Start pauses or begins</li>
+        any face button jumps and confirms &#xB7; <b>L/R shoulders spin the camera</b> &#xB7;
+        <b>Select cycles the zoom</b> (close / normal / aerial), quits to title while paused, or
+        starts fresh at the title &#xB7; Start pauses or begins &#xB7; right stick (modern pads) free camera</li>
     </ul>
     <h3>&#x1F49B; Friends &amp; foes</h3>
     <ul>
@@ -1546,6 +1548,19 @@ addEventListener('gamepadconnected', (e) => {
   showToast(`\ud83c\udfae ${name} connected!`, 3000);
 });
 
+/* select button: hop between zoom presets */
+function cycleZoom() {
+  const stops = [11, 16, 30];
+  const names = ['close-up \ud83d\udd0d', 'normal \ud83d\udc30', 'aerial \ud83d\uddfa'];
+  let nearest = 0;
+  for (let i = 1; i < stops.length; i++) {
+    if (Math.abs(camDist - stops[i]) < Math.abs(camDist - stops[nearest])) nearest = i;
+  }
+  const next = (nearest + 1) % stops.length;
+  camDist = stops[next];
+  showToast(`\ud83d\udd2d camera: ${names[next]}`, 1100);
+}
+
 /* ---------- camera zoom (wheel) ---------- */
 addEventListener('wheel', (e) => {
   if (!started || loreOpen) return;
@@ -1556,8 +1571,9 @@ addEventListener('wheel', (e) => {
 /* ---------- gamepad (Xbox / PlayStation / etc via the Gamepad API) ----------
    Some embeds (like the claude.ai artifact iframe) block the Gamepad API and
    make getGamepads() THROW \u2014 never let that take the whole game down. */
-const PAD_IDLE = { x: 0, z: 0, jump: false, rx: 0, ry: 0 };
+const PAD_IDLE = { x: 0, z: 0, jump: false, rx: 0, ry: 0, rot: 0 };
 let padBlocked = false;
+let padPrevSel = false, padPrevSh = false;
 let padHats = null; /* axes identified as HID hat switches (they rest out of range) */
 function pollPad() {
   if (padBlocked) return PAD_IDLE;
@@ -1613,12 +1629,26 @@ function pollPad() {
     if (gp.buttons[14] && gp.buttons[14].pressed) x = -1;
     if (gp.buttons[15] && gp.buttons[15].pressed) x = 1;
   }
-  /* any face button jumps \u2014 retro pads shuffle A/B/X/Y indices */
+  /* any face button: jump in play, confirm on overlays \u2014 retro pads shuffle A/B/X/Y indices */
   const a = [0, 1, 2, 3].some(i => gp.buttons[i] && gp.buttons[i].pressed);
   const jump = a && !padPrevA;
   padPrevA = a;
-  /* start/select: 8/9 on standard pads; retro adapters use 6/7 (8-button) or 8/9 (10-button) */
-  const st = (std ? [8, 9] : [6, 7, 8, 9]).some(i => gp.buttons[i] && gp.buttons[i].pressed);
+  if (jump && started && ['timeout', 'victory', 'gameover', 'paused'].includes(state)) anyInput();
+  /* L/R shoulders (4/5): rotate the camera, like Q/E \u2014 and the boss door at the title */
+  const sh = (gp.buttons[4] && gp.buttons[4].pressed) || (gp.buttons[5] && gp.buttons[5].pressed);
+  const rot = ((gp.buttons[4] && gp.buttons[4].pressed) ? 1 : 0) - ((gp.buttons[5] && gp.buttons[5].pressed) ? 1 : 0);
+  if (sh && !padPrevSh && !started && best.world >= 10) { clearRun(); startGame(true); }
+  padPrevSh = sh;
+  /* select (8): cycle zoom in play \u00b7 quit-to-title while paused \u00b7 start fresh at the title */
+  const sel = !!(gp.buttons[8] && gp.buttons[8].pressed);
+  if (sel && !padPrevSel) {
+    if (!started) { if (savedRun) { clearRun(); startGame(); } }
+    else if (state === 'paused') quitToTitle();
+    else if (state === 'play') cycleZoom();
+  }
+  padPrevSel = sel;
+  /* start: 9 on standard pads; retro adapters also use 6/7 (8-button layouts) */
+  const st = (std ? [9] : [6, 7, 9]).some(i => gp.buttons[i] && gp.buttons[i].pressed);
   if (st && !padPrevStart) {
     if (started && state === 'play') pauseGame();
     else if (!started && savedRun) continueRun(); /* Start = deliberate continue */
@@ -1626,7 +1656,7 @@ function pollPad() {
   }
   padPrevStart = st;
   if ((x || z || jump) && !started && !savedRun) startGame();
-  return { x, z, jump, rx, ry };
+  return { x, z, jump, rx, ry, rot };
 }
 document.getElementById('sound-btn').addEventListener('click', (e) => {
   e.stopPropagation();
@@ -1820,6 +1850,7 @@ function animate() {
   /* camera orbit + zoom */
   if (keys['q']) camAngle += dt * 2.2;
   if (keys['e']) camAngle -= dt * 2.2;
+  if (pad.rot) camAngle += pad.rot * dt * 2.2; /* L/R shoulders */
   if (pad.rx) camAngle -= pad.rx * dt * 2.5;
   if (pad.ry) camDist = Math.min(34, Math.max(10, camDist + pad.ry * dt * 12));
   if (state === 'play') {
