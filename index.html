@@ -1541,7 +1541,7 @@ document.getElementById('lore-close').addEventListener('click', (e) => { e.stopP
 document.getElementById('lore-card').addEventListener('click', (e) => { if (e.target.id === 'lore-card') closeLore(); });
 
 addEventListener('gamepadconnected', (e) => {
-  padRest = null; /* re-learn the resting pose */
+  padHats = null; /* re-learn which axes are hat switches */
   const name = (e.gamepad && e.gamepad.id ? e.gamepad.id : 'controller').slice(0, 36);
   showToast(`\ud83c\udfae ${name} connected!`, 3000);
 });
@@ -1558,12 +1558,16 @@ addEventListener('wheel', (e) => {
    make getGamepads() THROW \u2014 never let that take the whole game down. */
 const PAD_IDLE = { x: 0, z: 0, jump: false, rx: 0, ry: 0 };
 let padBlocked = false;
-let padRest = null; /* resting axis pose of a non-standard pad, captured on connect */
+let padHats = null; /* axes identified as HID hat switches (they rest out of range) */
 function pollPad() {
   if (padBlocked) return PAD_IDLE;
   let gp = null;
   try {
-    gp = (navigator.getGamepads && navigator.getGamepads()[0]) || null;
+    /* pads don't always sit in slot 0 \u2014 take the first connected one */
+    const pads = (navigator.getGamepads && navigator.getGamepads()) || [];
+    for (const p of pads) {
+      if (p && p.connected) { gp = p; break; }
+    }
   } catch {
     padBlocked = true;
     if (started) showToast('\ud83c\udfae controllers are blocked in this embed \u2014 keyboard works great!', 3500);
@@ -1583,30 +1587,25 @@ function pollPad() {
     ry = Math.abs(gp.axes[3] || 0) > 0.25 ? gp.axes[3] : 0;
   } else {
     /* generic retro/HID pad (SNES USB adapters etc): every adapter maps
-       differently, so snapshot the resting pose once and read ANY axis that
-       moves away from it. Hat-switch axes (which rest out of range) are
-       decoded into 8-way directions wherever they live. */
-    if (!padRest || padRest.n !== gp.axes.length) {
-      padRest = { n: gp.axes.length, axes: gp.axes.slice() };
-    }
+       differently, so read ANY axis pushed past 0.5 (even index = left/right,
+       odd = up/down). Hat-switch axes betray themselves by resting OUT of
+       range (e.g. 3.28) \u2014 once seen, they're decoded as 8-way d-pads. */
+    if (!padHats) padHats = new Set();
     for (let i = 0; i < gp.axes.length; i++) {
       const v = gp.axes[i];
       if (typeof v !== 'number') continue;
-      const rest = padRest.axes[i] || 0;
-      if (Math.abs(rest) > 1.01) { /* hat switch: rests out of range */
-        if (Math.abs(v) <= 1.01) {
-          const idx = ((Math.round((v + 1) * 3.5) % 8) + 8) % 8; /* 0=up \u2026 7=up-left */
-          const hx = [0, 1, 1, 1, 0, -1, -1, -1][idx];
-          const hz = [-1, -1, 0, 1, 1, 1, 0, -1][idx];
-          if (hx) x = hx;
-          if (hz) z = hz;
-        }
+      if (Math.abs(v) > 1.01) { padHats.add(i); continue; } /* hat at rest */
+      if (padHats.has(i)) { /* hat being pressed */
+        const idx = ((Math.round((v + 1) * 3.5) % 8) + 8) % 8; /* 0=up \u2026 7=up-left */
+        const hx = [0, 1, 1, 1, 0, -1, -1, -1][idx];
+        const hz = [-1, -1, 0, 1, 1, 1, 0, -1][idx];
+        if (hx) x = hx;
+        if (hz) z = hz;
         continue;
       }
-      const dv = v - rest;
-      if (Math.abs(dv) < 0.5) continue;
-      if (i % 2 === 0) x = Math.max(-1, Math.min(1, dv));
-      else z = Math.max(-1, Math.min(1, dv));
+      if (Math.abs(v) < 0.5) continue;
+      if (i % 2 === 0) x = Math.max(-1, Math.min(1, v));
+      else z = Math.max(-1, Math.min(1, v));
     }
     /* some adapters still use d-pad buttons */
     if (gp.buttons[12] && gp.buttons[12].pressed) z = -1;
