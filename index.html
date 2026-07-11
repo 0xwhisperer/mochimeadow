@@ -43,7 +43,7 @@
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;overflow:hidden;font-family:'Fredoka',sans-serif;background:#ffe9f0}
-  canvas{display:block}
+  canvas{display:block;touch-action:none}
 
   #vignette{position:fixed;inset:0;pointer-events:none;z-index:5;
     background:radial-gradient(ellipse at center, transparent 55%, rgba(255,183,201,.28) 100%);}
@@ -262,8 +262,9 @@
     </ul>
     <h3>&#x1F579; Controls</h3>
     <ul>
-      <li><b>Move:</b> WASD / arrow keys / drag on touch</li>
-      <li><b>Jump:</b> SPACE (or &#x1F3AE; A) &#x2014; sail over grumps, thorns, and up to high sparkles</li>
+      <li><b>Move:</b> WASD / arrow keys &#xB7; on touch (iPad/phone): drag anywhere to hop</li>
+      <li><b>Jump:</b> SPACE, any &#x1F3AE; face button, or a <b>quick tap</b> on touch &#x2014; sail over
+        grumps, thorns, and up to high sparkles</li>
       <li><b>Camera:</b> Q / E to circle the world 360&#xB0; &#xB7; mouse wheel to zoom out for an aerial view</li>
       <li><b>Pause:</b> ESC or P (or the &#x23F8; button) &#x2014; resume with any key, or quit to the title from there</li>
       <li><b>&#x1F3AE; Controller:</b> left stick or d-pad to move (retro USB pads like SNES work too) &#xB7;
@@ -1184,7 +1185,7 @@ const KONAMI_WASD = ['w','w','s','s','a','d','a','d','b','a'];
 let best = { score: 0, world: 1 };
 try { best = { ...best, ...JSON.parse(localStorage.getItem('mochiBest') || '{}') }; } catch {}
 /* the run itself is saved continuously, so a page reload never wipes progress */
-const GAME_VERSION = '20260711-170436'; /* stamped with a real build id at publish time */
+const GAME_VERSION = '20260711-170806'; /* stamped with a real build id at publish time */
 let savedRun = null;
 try { savedRun = JSON.parse(localStorage.getItem('mochiRun') || 'null'); } catch {}
 if (savedRun && !(savedRun.world >= 1 && (savedRun.world > 1 || savedRun.score > 0))) savedRun = null;
@@ -1307,10 +1308,10 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
-let touchDir = null, touchOrigin = null;
+let touchDir = null, touchOrigin = null, touchJump = false;
 renderer.domElement.addEventListener('pointerdown', (e) => {
   anyInput();
-  touchOrigin = { x: e.clientX, y: e.clientY };
+  touchOrigin = { x: e.clientX, y: e.clientY, t: performance.now() };
 });
 addEventListener('pointermove', (e) => {
   if (!touchOrigin) return;
@@ -1318,7 +1319,15 @@ addEventListener('pointermove', (e) => {
   const len = Math.hypot(dx, dy);
   touchDir = len > 12 ? { x: dx / len, z: dy / len } : null;
 });
-addEventListener('pointerup', () => { touchOrigin = null; touchDir = null; });
+addEventListener('pointerup', () => {
+  /* a quick tap (no drag) is a JUMP on touch screens */
+  if (touchOrigin && !touchDir && performance.now() - touchOrigin.t < 250
+      && started && state === 'play') {
+    touchJump = true;
+  }
+  touchOrigin = null;
+  touchDir = null;
+});
 
 function anyInput() {
   if (loreOpen) return;
@@ -1974,10 +1983,11 @@ function animate() {
     player.position.z += vel.z * dt;
 
     /* real jump \u2014 soar over grumps, thorns, even the Grumpapillar */
-    if ((keys[' '] || pad.jump) && player.position.y <= 0.001 && started) {
+    if ((keys[' '] || pad.jump || touchJump) && player.position.y <= 0.001 && started) {
       playerVy = 9;
       sfxJump();
     }
+    touchJump = false;
     if (player.position.y > 0 || playerVy > 0) {
       playerVy -= 16 * dt;
       player.position.y += playerVy * dt;
