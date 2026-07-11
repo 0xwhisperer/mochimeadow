@@ -94,6 +94,7 @@
   #timeout-card h2{font-size:clamp(2rem,6vw,3rem);color:#8a9ab8;
     text-shadow:0 3px 0 #fff}
   @keyframes bounce-soft{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+  .press.menu-focus{outline:4px solid #ffd66b;outline-offset:3px}
   @keyframes float-in{from{transform:translateY(30px) scale(.92);opacity:0}to{transform:none;opacity:1}}
   @keyframes spin-slow{to{transform:rotate(360deg)}}
 
@@ -266,6 +267,7 @@
       <li><b>Camera:</b> Q / E to circle the world 360&#xB0; &#xB7; mouse wheel to zoom out for an aerial view</li>
       <li><b>Pause:</b> ESC or P (or the &#x23F8; button) &#x2014; resume with any key, or quit to the title from there</li>
       <li><b>&#x1F3AE; Controller:</b> left stick or d-pad to move (retro USB pads like SNES work too) &#xB7;
+        on menus, <b>the d-pad moves the highlight and any face button selects</b> &#xB7;
         any face button jumps and confirms &#xB7; <b>L/R shoulders spin the camera</b> &#xB7;
         <b>Select cycles the zoom</b> (close / normal / aerial), quits to title while paused, or
         starts fresh at the title &#xB7; Start pauses or begins &#xB7; right stick (modern pads) free camera</li>
@@ -1182,7 +1184,7 @@ const KONAMI_WASD = ['w','w','s','s','a','d','a','d','b','a'];
 let best = { score: 0, world: 1 };
 try { best = { ...best, ...JSON.parse(localStorage.getItem('mochiBest') || '{}') }; } catch {}
 /* the run itself is saved continuously, so a page reload never wipes progress */
-const GAME_VERSION = '20260711-051716'; /* stamped with a real build id at publish time */
+const GAME_VERSION = '20260711-170436'; /* stamped with a real build id at publish time */
 let savedRun = null;
 try { savedRun = JSON.parse(localStorage.getItem('mochiRun') || 'null'); } catch {}
 if (savedRun && !(savedRun.world >= 1 && (savedRun.world > 1 || savedRun.score > 0))) savedRun = null;
@@ -1277,6 +1279,12 @@ addEventListener('keydown', (e) => {
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
   if (loreOpen) { if (k === 'escape' || k === 'enter') closeLore(); return; }
   if ((k === 'escape' || k === 'p') && started && state === 'play') { pauseGame(); return; }
+  /* arrows steer the menu highlight; ENTER selects it */
+  if (menuContext()) {
+    if (k === 'arrowup' || k === 'arrowleft') { menuMove(-1); return; }
+    if (k === 'arrowdown' || k === 'arrowright') { menuMove(1); return; }
+    if (k === 'enter') { menuActivate(); return; }
+  }
   if (started && k === 'enter') { confirmOverlay(); return; }
   keys[k] = true;
   /* konami code (arrow or WASD spelling): the meadow remembers the old ways */
@@ -1317,6 +1325,50 @@ function anyInput() {
   if (!started) { if (!savedRun) startGame(); return; } /* with a saved run, only ENTER continues */
   if (state === 'paused') resumeGame(); /* resuming is harmless \u2014 any key is fine */
 }
+/* ---------- menu navigation (d-pad / arrows move, face button / ENTER selects) ---------- */
+let menuIdx = 0;
+function menuContext() {
+  if (loreOpen) return null;
+  if (!started) return 'title';
+  if (state === 'paused') return 'pause';
+  return null;
+}
+function menuItems() {
+  const ctx = menuContext();
+  if (!ctx) return [];
+  if (ctx === 'title') {
+    const items = [{ el: document.getElementById('main-press'),
+      act: () => savedRun ? continueRun() : startGame() }];
+    const cp = document.getElementById('continue-press');
+    if (cp.style.display !== 'none') items.push({ el: cp, act: () => { clearRun(); startGame(); } });
+    items.push({ el: document.getElementById('lore-open-title'), act: openLore });
+    const bp = document.getElementById('boss-press');
+    if (bp.style.display !== 'none') items.push({ el: bp, act: () => { clearRun(); startGame(true); } });
+    return items;
+  }
+  return [
+    { el: document.querySelector('#pause-card .press:not(#quit-btn)'), act: resumeGame },
+    { el: document.getElementById('quit-btn'), act: quitToTitle },
+  ];
+}
+function menuHighlight() {
+  document.querySelectorAll('.menu-focus').forEach(el => el.classList.remove('menu-focus'));
+  const items = menuItems();
+  if (!items.length) return;
+  menuIdx = ((menuIdx % items.length) + items.length) % items.length;
+  items[menuIdx].el.classList.add('menu-focus');
+}
+function menuMove(d) { menuIdx += d; menuHighlight(); }
+function menuActivate() {
+  const items = menuItems();
+  if (!items.length) return;
+  menuIdx = ((menuIdx % items.length) + items.length) % items.length;
+  const item = items[menuIdx];
+  menuIdx = 0;
+  item.act();
+  menuHighlight();
+}
+
 /* end-of-round screens need a DELIBERATE confirm (ENTER / click / Start) so a
    player mashing keys at the moment the round ends can't restart by accident */
 let overlayLockUntil = 0;
@@ -1332,11 +1384,14 @@ function pauseGame() {
   if (!started || state !== 'play' || loreOpen) return;
   state = 'paused';
   document.getElementById('pause-card').classList.remove('hidden');
+  menuIdx = 0;
+  menuHighlight();
 }
 function resumeGame() {
   if (state !== 'paused') return;
   state = 'play';
   document.getElementById('pause-card').classList.add('hidden');
+  menuHighlight();
 }
 function quitToTitle() {
   document.getElementById('pause-card').classList.add('hidden');
@@ -1361,6 +1416,8 @@ function quitToTitle() {
   clearRun();
   document.getElementById('hud').classList.remove('on');
   document.getElementById('title-card').classList.remove('hidden');
+  menuIdx = 0;
+  menuHighlight();
 }
 function victoryLap() {
   document.getElementById('victory-card').classList.add('hidden');
@@ -1384,6 +1441,7 @@ function startGame(bossStart = false) {
     showToast(`\ud83c\udf0d world 1 \u00b7 ${themeOf(1).name}`);
   }
   setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 10000);
+  menuHighlight();
 }
 function resetRun() {
   document.getElementById('gameover-card').classList.add('hidden');
@@ -1451,6 +1509,7 @@ function continueRun() {
   document.getElementById('hud').classList.add('on');
   showToast(`\ud83d\udcbe welcome back! \ud83c\udf0d world ${world} \u00b7 \u2b50 ${score}`);
   setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 10000);
+  menuHighlight();
 }
 document.getElementById('title-card').addEventListener('click', anyInput);
 document.getElementById('timeout-card').addEventListener('click', confirmOverlay);
@@ -1546,12 +1605,14 @@ function openLore() {
   loreOpen = true;
   if (started && state === 'play') state = 'lore';
   document.getElementById('lore-card').classList.remove('hidden');
+  menuHighlight();
 }
 function closeLore() {
   if (!loreOpen) return;
   loreOpen = false;
   if (state === 'lore') state = 'play';
   document.getElementById('lore-card').classList.add('hidden');
+  menuHighlight();
 }
 document.getElementById('lore-open-title').addEventListener('click', (e) => { e.stopPropagation(); openLore(); });
 document.getElementById('lore-btn').addEventListener('click', (e) => { e.stopPropagation(); openLore(); });
@@ -1589,7 +1650,7 @@ addEventListener('wheel', (e) => {
    make getGamepads() THROW \u2014 never let that take the whole game down. */
 const PAD_IDLE = { x: 0, z: 0, jump: false, rx: 0, ry: 0, rot: 0 };
 let padBlocked = false;
-let padPrevSel = false, padPrevSh = false;
+let padPrevSel = false, padPrevSh = false, padPrevNav = 0;
 let padHats = null; /* axes identified as HID hat switches (they rest out of range) */
 function pollPad() {
   if (padBlocked) return PAD_IDLE;
@@ -1649,7 +1710,17 @@ function pollPad() {
   const a = [0, 1, 2, 3].some(i => gp.buttons[i] && gp.buttons[i].pressed);
   const jump = a && !padPrevA;
   padPrevA = a;
-  if (jump && started && state === 'paused') resumeGame(); /* face buttons only resume a pause */
+  /* face buttons work the menus: select the highlighted button, or close the book */
+  if (jump) {
+    if (loreOpen) closeLore();
+    else if (menuContext()) menuActivate();
+  }
+  /* d-pad / stick moves the menu highlight (edge-triggered) */
+  if (menuContext()) {
+    const nav = (z > 0.5 || x > 0.5) ? 1 : ((z < -0.5 || x < -0.5) ? -1 : 0);
+    if (nav && nav !== padPrevNav) menuMove(nav);
+    padPrevNav = nav;
+  } else padPrevNav = 0;
   /* L/R shoulders (4/5): rotate the camera, like Q/E \u2014 and the boss door at the title */
   const sh = (gp.buttons[4] && gp.buttons[4].pressed) || (gp.buttons[5] && gp.buttons[5].pressed);
   const rot = ((gp.buttons[4] && gp.buttons[4].pressed) ? 1 : 0) - ((gp.buttons[5] && gp.buttons[5].pressed) ? 1 : 0);
@@ -1672,7 +1743,6 @@ function pollPad() {
     else anyInput();
   }
   padPrevStart = st;
-  if ((x || z || jump) && !started && !savedRun) startGame();
   return { x, z, jump, rx, ry, rot };
 }
 document.getElementById('sound-btn').addEventListener('click', (e) => {
@@ -2362,5 +2432,6 @@ window.__mochi = {
 };
 
 buildWorld(1);
+menuHighlight(); /* highlight the title menu's default choice */
 animate();
 </script>
